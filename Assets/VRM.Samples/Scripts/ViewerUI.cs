@@ -5,6 +5,12 @@ using UniHumanoid;
 using UnityEngine;
 using UnityEngine.UI;
 
+#if UNITY_ANDROID
+// Include these namespaces to use BinaryFormatter
+using System.Runtime.Serialization.Formatters.Binary;
+using System.IO;
+using GracesGames.SimpleFileBrowser.Scripts;
+#endif
 
 namespace VRM
 {
@@ -32,6 +38,17 @@ namespace VRM
 
         [SerializeField]
         GameObject Root;
+
+        // Use the file browser prefab
+        [SerializeField]
+        GameObject m_fileBrowserPrefab;
+
+        // Define a file extension
+        [SerializeField]
+        public string[] m_fileExtensions;
+
+        [SerializeField]
+        public bool PortraitMode;
 
         [Serializable]
         struct TextFields
@@ -194,6 +211,8 @@ namespace VRM
 
         private void Start()
         {
+            m_target = GameObject.FindObjectOfType<TargetMover>().gameObject;
+
             m_version.text = string.Format("VRMViewer {0}.{1}",
                 VRMVersion.MAJOR, VRMVersion.MINOR);
             m_open.onClick.AddListener(OnOpenClicked);
@@ -251,8 +270,10 @@ namespace VRM
             }
         }
 
+        private FileBrowser fileBrowserScript;
         void OnOpenClicked()
         {
+#if UNITY_STANDALONE_WIN
             var path = FileDialogForWindows.FileDialog("open vrm", "vrm");
             if (string.IsNullOrEmpty(path))
             {
@@ -260,8 +281,31 @@ namespace VRM
             }
 
             LoadModel(path);
+#elif UNITY_ANDROID
+            // Create the file browser and name it
+            GameObject fileBrowserObject = Instantiate(m_fileBrowserPrefab, transform);
+            fileBrowserObject.name = "FileBrowser";
+            // Set the mode to save or load
+            fileBrowserScript = fileBrowserObject.GetComponent<FileBrowser>();
+            fileBrowserScript.SetupFileBrowser(PortraitMode ? ViewMode.Portrait : ViewMode.Landscape);
+            fileBrowserScript.OpenFilePanel(m_fileExtensions);
+            // Subscribe to OnFileSelect event (call LoadFileUsingPath using path) 
+            fileBrowserScript.OnFileSelect += LoadFileUsingPath;
+#endif
         }
 
+#if UNITY_ANDROID
+        // Loads a file using a path
+        private void LoadFileUsingPath(string path) {
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+            fileBrowserScript.CloseFileBrowser();
+            LoadModel(path);
+        }
+#endif        
+        
         void LoadModel(string path)
         {
             if (!File.Exists(path))
@@ -292,7 +336,7 @@ namespace VRM
             // cleanup
             if (m_loaded != null)
             {
-                GameObject.Destroy(m_loaded);
+                GameObject.Destroy(m_loaded.gameObject);
             }
 
             m_loaded = go.AddComponent<HumanPoseTransfer>();
